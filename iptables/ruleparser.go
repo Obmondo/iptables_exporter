@@ -47,7 +47,7 @@ func (p *ruleParser) handleToken(token string) {
 		p.packets, p.bytes, p.countersOk = parseCounters(token)
 		return
 	}
-	if strings.HasPrefix(token, "-") {
+	if strings.HasPrefix(token, "-") || strings.HasPrefix(token, "!") {
 		p.flush()
 		p.current = token
 		return
