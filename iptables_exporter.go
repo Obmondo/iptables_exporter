@@ -87,7 +87,7 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 	tables, err := iptables.GetTables()
 	duration := time.Since(start)
 	if err == nil && len(tables) == 0 {
-		err = errors.New("no output from iptables-save; this is probably due to insufficient permissions")
+		err = errors.New("no output from iptables-save; no iptables rules found")
 	}
 	metricChan <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, duration.Seconds())
 	if err != nil {
