@@ -16,6 +16,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -97,6 +98,9 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 	}
 	metricChan <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 1)
 
+	// Use a map to track reported rules
+	reportedRules := make(map[string]struct{})
+
 	for tableName, table := range tables {
 		for chainName, chain := range table {
 			metricChan <- prometheus.MustNewConstMetric(
@@ -116,22 +120,30 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 				chain.Policy,
 			)
 			for _, rule := range chain.Rules {
-				metricChan <- prometheus.MustNewConstMetric(
-					rulePacketsDesc,
-					prometheus.CounterValue,
-					float64(rule.Packets),
-					tableName,
-					chainName,
-					rule.Rule,
-				)
-				metricChan <- prometheus.MustNewConstMetric(
-					ruleBytesDesc,
-					prometheus.CounterValue,
-					float64(rule.Bytes),
-					tableName,
-					chainName,
-					rule.Rule,
-				)
+				ruleKey := tableName + chainName + rule.Rule + fmt.Sprintf("%d:%d", rule.Packets, rule.Bytes)
+				log.Infof("Processing rule: %s", ruleKey)
+
+				// Check if the rule has already been reported
+				if _, exists := reportedRules[ruleKey]; !exists {
+					reportedRules[ruleKey] = struct{}{} // Mark the rule as reported
+
+					metricChan <- prometheus.MustNewConstMetric(
+						rulePacketsDesc,
+						prometheus.CounterValue,
+						float64(rule.Packets),
+						tableName,
+						chainName,
+						rule.Rule,
+					)
+					metricChan <- prometheus.MustNewConstMetric(
+						ruleBytesDesc,
+						prometheus.CounterValue,
+						float64(rule.Bytes),
+						tableName,
+						chainName,
+						rule.Rule,
+					)
+				}
 			}
 		}
 	}
