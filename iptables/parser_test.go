@@ -39,6 +39,38 @@ func (c parserTestCase) run() ([]string, error) {
 	return deep.Equal(c.expected, result), nil
 }
 
+func (c parserTestCase) customRun() ([]string, error) {
+	f, err := os.Open(c.name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	result, err := ParseIptablesSave(f)
+	if err != nil {
+		return nil, err
+	}
+	updatedResult := make(Tables, len(result))
+	for tableName, table := range result {
+		updatedTable := make(Table, len(table))
+		for chainName, chain := range table {
+			reportedRule := make(map[Rule]struct{}, len(chain.Rules))
+			rules := []Rule{}
+			for _, rule := range chain.Rules {
+				if _, exists := reportedRule[rule]; exists {
+					continue
+				}
+				reportedRule[rule] = struct{}{}
+				rules = append(rules, rule)
+			}
+			chain.Rules = rules
+			updatedTable[chainName] = chain
+		}
+		updatedResult[tableName] = updatedTable
+	}
+
+	return deep.Equal(c.expected, updatedResult), nil
+}
+
 var parserTestCases = []parserTestCase{
 	{
 		name: "server.iptables-save",
@@ -219,9 +251,117 @@ var parserTestCases = []parserTestCase{
 	},
 }
 
+var customParserTestCases = []parserTestCase{
+	{
+		name: "custom1.iptables-save",
+		expected: Tables{
+			"nat": {
+				"POSTROUTING": {
+					Policy:  "ACCEPT",
+					Packets: 539154,
+					Bytes:   42361851,
+					Rules: []Rule{
+						{
+							Packets: 539154,
+							Bytes:   42361851,
+							Rule:    "-j LIBVIRT_PRT",
+						},
+					},
+				},
+				"LIBVIRT_PRT": {
+					Policy: "-",
+					Rules: []Rule{
+						{
+							Packets: 2,
+							Bytes:   176,
+							Rule:    "-s 192.168.122.0/24 -d 224.0.0.0/24 -j RETURN",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 -d 255.255.255.255/32 -j RETURN",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 ! -d 192.168.122.0/24 -p tcp -j MASQUERADE --to-ports 1024-65535",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 ! -d 192.168.122.0/24 -p udp -j MASQUERADE --to-ports 1024-65535",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 ! -d 192.168.122.0/24 -j MASQUERADE",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 -d 224.0.0.0/24 -j RETURN",
+						},
+					},
+				},
+			},
+		},
+	},
+	{
+		name: "custom2.iptables-save",
+		expected: Tables{
+			"nat": {
+				"POSTROUTING": {
+					Policy:  "ACCEPT",
+					Packets: 539154,
+					Bytes:   42361851,
+					Rules: []Rule{
+						{
+							Packets: 539154,
+							Bytes:   42361851,
+							Rule:    "-j LIBVIRT_PRT",
+						},
+					},
+				},
+				"LIBVIRT_PRT": {
+					Policy: "-",
+					Rules: []Rule{
+						{
+							Packets: 2,
+							Bytes:   176,
+							Rule:    "-s 192.168.122.0/24 -d 224.0.0.0/24 -j RETURN",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 -d 255.255.255.255/32 -j RETURN",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 ! -d 192.168.122.0/24 -p tcp -j MASQUERADE --to-ports 1024-65535",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 ! -d 192.168.122.0/24 -p udp -j MASQUERADE --to-ports 1024-65535",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 ! -d 192.168.122.0/24 -j MASQUERADE",
+						},
+						{
+							Rule: "-s 192.168.122.0/24 -d 224.0.0.0/24 -j RETURN",
+						},
+						{
+							Packets: 123,
+							Bytes:   456,
+							Rule:    "-s 192.168.122.0/24 ! -d 192.168.122.0/24 -p tcp -j MASQUERADE --to-ports 1024-65535",
+						},
+					},
+				},
+			},
+		},
+	},
+}
+
 func TestParseIptablesSave(t *testing.T) {
 	for _, tc := range parserTestCases {
 		mismatch, err := tc.run()
+		if err != nil {
+			t.Fatalf("%s: %+v", tc.name, err)
+		}
+		if mismatch != nil {
+			t.Fatalf("%s: %+v", tc.name, mismatch)
+		}
+	}
+}
+
+func TestCustomParseIptablesSave(t *testing.T) {
+	for _, tc := range customParserTestCases {
+		mismatch, err := tc.customRun()
 		if err != nil {
 			t.Fatalf("%s: %+v", tc.name, err)
 		}
