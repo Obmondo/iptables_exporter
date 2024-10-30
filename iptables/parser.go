@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -113,6 +114,17 @@ func (p *parser) handleRule(line string) {
 		Rule:    strings.Join(subParser.flags, " "),
 	}
 	chain := p.currentTable[subParser.chain]
+
+	// Filtering mechanism to prevent multiple duplicate rules to get created.
+	// We simply skip addition of the rule if it already exists in the chain.
+	// Note: We considering ONLY rule to uniquely identify it, and NOT packets and bytes.
+	doesRuleExistInChain := func(rule Rule) bool {
+		return rule.Rule == r.Rule
+	}
+	if slices.ContainsFunc(chain.Rules, doesRuleExistInChain) {
+		return
+	}
+
 	chain.Rules = append(chain.Rules, r)
 	p.currentTable[subParser.chain] = chain
 }
