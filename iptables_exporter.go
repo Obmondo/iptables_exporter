@@ -115,16 +115,7 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 				chainName,
 				chain.Policy,
 			)
-			// Hash map to ensure only unique rule, per table, per chain is used to create metric.
-			// If we encounter multiple duplicate rules, we simply going to skip the iteration for that rule.
-			// Note: We considering rule, packets, and bytes altogether to uniquely identify a rule.
-			reportedRule := make(map[iptables.Rule]struct{}, len(chain.Rules))
 			for _, rule := range chain.Rules {
-				if _, exists := reportedRule[rule]; exists {
-					continue
-				}
-				reportedRule[rule] = struct{}{}
-
 				metricChan <- prometheus.MustNewConstMetric(
 					rulePacketsDesc,
 					prometheus.CounterValue,
