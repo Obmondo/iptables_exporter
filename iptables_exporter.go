@@ -16,18 +16,23 @@ package main
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/Obmondo/iptables_exporter/iptables"
+	"github.com/alecthomas/kingpin/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/log"
+	"github.com/prometheus/common/promslog"
+	"github.com/prometheus/common/promslog/flag"
 	"github.com/prometheus/common/version"
-	"github.com/retailnext/iptables_exporter/iptables"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-type collector struct{}
+type collector struct {
+	logger *slog.Logger
+}
 
 var (
 	scrapeDurationDesc = prometheus.NewDesc(
@@ -92,7 +97,7 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 	metricChan <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, duration.Seconds())
 	if err != nil {
 		metricChan <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 0)
-		log.Error(err)
+		c.logger.Error(err.Error())
 		return
 	}
 	metricChan <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 1)
@@ -145,15 +150,18 @@ func main() {
 		metricsPath   = kingpin.Flag("web.telemetry-path", "Path under which to expose metrics.").Default("/metrics").String()
 	)
 
-	log.AddFlags(kingpin.CommandLine)
+	promslogConfig := &promslog.Config{}
+	flag.AddFlags(kingpin.CommandLine, promslogConfig)
 	kingpin.Version(version.Print("iptables_exporter"))
+	kingpin.CommandLine.UsageWriter(os.Stdout)
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
+	logger := promslog.New(promslogConfig)
 
-	log.Infoln("Starting iptables_exporter", version.Info())
-	log.Infoln("Build context", version.BuildContext())
+	logger.Info("Starting iptables_exporter", "version", version.Info())
+	logger.Info("Build context", "build_context", version.BuildContext())
 
-	var c collector
+	c := collector{}
 	prometheus.MustRegister(&c)
 
 	http.Handle(*metricsPath, promhttp.Handler())
@@ -167,9 +175,10 @@ func main() {
 			</html>`))
 	})
 
-	log.Infoln("Listening on", *listenAddress)
+	logger.Info("Listening on", "listen_address", *listenAddress)
 	err := http.ListenAndServe(*listenAddress, nil)
-	if err != nil {
-		log.Fatal(err)
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Error(err.Error())
+		os.Exit(1)
 	}
 }
