@@ -16,6 +16,7 @@ package iptables
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -24,9 +25,11 @@ import (
 	"strings"
 )
 
+const countersRegexp = `^\[(\d+):(\d+)]$`
+
 func ParseIptablesSave(r io.Reader) (Tables, error) {
 	scanner := bufio.NewScanner(r)
-	var parser parser
+	parser := parser{}
 	for scanner.Scan() {
 		parser.handleLine(scanner.Text())
 	}
@@ -35,8 +38,8 @@ func ParseIptablesSave(r io.Reader) (Tables, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(parser.errors) > 0 {
-		return nil, parser.errors[0]
+	if parser.err != nil {
+		return nil, err
 	}
 	return parser.result, nil
 }
@@ -56,7 +59,7 @@ type parser struct {
 	currentTableName string
 	currentTable     Table
 	line             int
-	errors           []error
+	err              error
 }
 
 func (p *parser) flush() {
@@ -73,13 +76,13 @@ func (p *parser) flush() {
 func (p *parser) handleNewChain(line string) {
 	fields := strings.Fields(line)
 	if len(fields) != 3 {
-		p.errors = append(p.errors, ParseError{"expected 3 fields", p.line, line})
+		p.err = errors.Join(p.err, ParseError{"expected 3 fields", p.line, line})
 		return
 	}
 	name := strings.TrimPrefix(fields[0], ":")
 	packets, bytes, ok := parseCounters(fields[2])
 	if !ok {
-		p.errors = append(p.errors, ParseError{"expected [packets:bytes]", p.line, line})
+		p.err = errors.Join(p.err, ParseError{"expected [packets:bytes]", p.line, line})
 		return
 	}
 	if p.currentTable == nil {
@@ -95,17 +98,17 @@ func (p *parser) handleNewChain(line string) {
 
 func (p *parser) handleRule(line string) {
 	fields := strings.Fields(line)
-	var subParser ruleParser
+	subParser := ruleParser{}
 	for _, token := range fields {
 		subParser.handleToken(token)
 	}
 	subParser.flush()
 	if !subParser.countersOk {
-		p.errors = append(p.errors, ParseError{"expected [packets:bytes]", p.line, line})
+		p.err = errors.Join(p.err, ParseError{"expected [packets:bytes]", p.line, line})
 		return
 	}
 	if subParser.chain == "" {
-		p.errors = append(p.errors, ParseError{"expected -A chain ...", p.line, line})
+		p.err = errors.Join(p.err, ParseError{"expected -A chain ...", p.line, line})
 		return
 	}
 	r := Rule{
@@ -152,13 +155,11 @@ func (p *parser) handleLine(line string) {
 		p.handleRule(line)
 		return
 	}
-	p.errors = append(p.errors, ParseError{"unhandled line", p.line, line})
+	p.err = errors.Join(p.err, ParseError{"unhandled line", p.line, line})
 }
 
-var countersRegexp = regexp.MustCompile(`^\[(\d+):(\d+)]$`)
-
 func parseCounters(field string) (packets, bytes uint64, ok bool) {
-	parts := countersRegexp.FindStringSubmatch(field)
+	parts := regexp.MustCompile(countersRegexp).FindStringSubmatch(field)
 	if len(parts) != 3 {
 		return
 	}
