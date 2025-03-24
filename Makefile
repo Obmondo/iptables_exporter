@@ -70,8 +70,9 @@ unused: $(GOVENDOR)
 	@$(GOVENDOR) list +unused | grep . && exit 1 || echo 'No unused packages'
 
 build: promu
-	@echo ">> building binary"
-	$(PROMU) build --prefix $(PREFIX)
+	@echo ">> building binaries"
+	@GOOS=linux GOARCH=amd64 $(PROMU) build --prefix $(PREFIX)/bin/amd64/
+	@GOOS=linux GOARCH=arm64 $(PROMU) build --prefix $(PREFIX)/bin/arm64/
 
 tarball: promu
 	@echo ">> building release tarball"
