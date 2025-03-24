@@ -70,7 +70,7 @@ unused: $(GOVENDOR)
 	@$(GOVENDOR) list +unused | grep . && exit 1 || echo 'No unused packages'
 
 build: promu
-	@echo ">> building binaries"
+	@echo ">> building binary"
 	$(PROMU) build --prefix $(PREFIX)
 
 tarball: promu
@@ -78,7 +78,7 @@ tarball: promu
 	$(PROMU) tarball --prefix $(PREFIX) $(BIN_DIR)
 
 promu:
-	GOOS= GOARCH= $(GO) get -u github.com/prometheus/promu
+	$(GO) install github.com/prometheus/promu@latest
 
 $(FIRST_GOPATH)/bin/staticcheck:
 	GOOS= GOARCH= $(GO) get -u honnef.co/go/tools/cmd/staticcheck

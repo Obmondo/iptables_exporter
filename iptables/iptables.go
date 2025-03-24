@@ -14,35 +14,40 @@
 
 package iptables
 
-import "os/exec"
+import (
+	"log/slog"
+	"os/exec"
+)
 
 func GetTables() (Tables, error) {
 	cmd := exec.Command("iptables-save", "-c")
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
+		slog.Error("failed to pipe iptables-save output", slog.String("err", err.Error()))
 		return nil, err
 	}
 
-	resultCh := make(chan struct {
+	type resultNErr struct {
 		Tables
 		error
-	})
+	}
+
+	resultCh := make(chan resultNErr)
 	go func() {
 		result, parseErr := ParseIptablesSave(pipe)
-		resultCh <- struct {
-			Tables
-			error
-		}{result, parseErr}
+		resultCh <- resultNErr{result, parseErr}
 	}()
 
 	err = cmd.Start()
 	if err != nil {
+		slog.Error("failed to start iptables-save", slog.String("err", err.Error()))
 		return nil, err
 	}
 
 	r := <-resultCh
 	err = cmd.Wait()
 	if err != nil {
+		slog.Error("iptables-save encountered failure", slog.String("err", err.Error()))
 		return nil, err
 	}
 

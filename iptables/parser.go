@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"regexp"
 	"slices"
 	"strconv"
@@ -30,17 +31,22 @@ const countersRegexp = `^\[(\d+):(\d+)]$`
 func ParseIptablesSave(r io.Reader) (Tables, error) {
 	scanner := bufio.NewScanner(r)
 	parser := parser{}
+
 	for scanner.Scan() {
 		parser.handleLine(scanner.Text())
 	}
+
 	parser.flush()
-	err := scanner.Err()
-	if err != nil {
-		return nil, err
-	}
 	if parser.err != nil {
+		slog.Error("failed to parse iptables-save", slog.String("err", parser.err.Error()))
+		return nil, parser.err
+	}
+
+	if err := scanner.Err(); err != nil {
+		slog.Error("failed to read iptables-save", slog.String("err", err.Error()))
 		return nil, err
 	}
+
 	return parser.result, nil
 }
 
