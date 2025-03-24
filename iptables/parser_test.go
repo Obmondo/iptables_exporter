@@ -15,6 +15,7 @@
 package iptables
 
 import (
+	"log/slog"
 	"os"
 	"testing"
 
@@ -29,13 +30,25 @@ type parserTestCase struct {
 func (c parserTestCase) run() ([]string, error) {
 	f, err := os.Open(c.name)
 	if err != nil {
+		slog.Error(
+			"failed to open file",
+			slog.String("file", c.name),
+			slog.String("err", err.Error()),
+		)
 		return nil, err
 	}
 	defer f.Close()
+
 	result, err := ParseIptablesSave(f)
 	if err != nil {
+		slog.Error(
+			"failed to parse iptables-save",
+			slog.String("file", c.name),
+			slog.String("err", err.Error()),
+		)
 		return nil, err
 	}
+
 	return deep.Equal(c.expected, result), nil
 }
 

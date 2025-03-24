@@ -16,6 +16,7 @@ package main
 
 import (
 	"errors"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -30,9 +31,13 @@ import (
 	"github.com/prometheus/common/version"
 )
 
-type collector struct {
-	logger *slog.Logger
-}
+type (
+	collector struct{}
+
+	pageData struct {
+		MetricsPath string
+	}
+)
 
 var (
 	scrapeDurationDesc = prometheus.NewDesc(
@@ -91,15 +96,19 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 	start := time.Now()
 	tables, err := iptables.GetTables()
 	duration := time.Since(start)
-	if err == nil && len(tables) == 0 {
-		err = errors.New("no output from iptables-save; no iptables rules found")
+
+	if len(tables) == 0 {
+		errNoIptables := errors.New("no output from iptables-save; no iptables rules found")
+		err = errors.Join(err, errNoIptables)
 	}
+
 	metricChan <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, duration.Seconds())
 	if err != nil {
 		metricChan <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 0)
-		c.logger.Error(err.Error())
+		slog.Error("failed during metric collection", slog.String("err", err.Error()))
 		return
 	}
+
 	metricChan <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 1)
 
 	for tableName, table := range tables {
@@ -153,32 +162,49 @@ func main() {
 	promslogConfig := &promslog.Config{}
 	flag.AddFlags(kingpin.CommandLine, promslogConfig)
 	kingpin.Version(version.Print("iptables_exporter"))
-	kingpin.CommandLine.UsageWriter(os.Stdout)
+	kingpin.CommandLine.UsageWriter(os.Stderr)
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
-	logger := promslog.New(promslogConfig)
 
-	logger.Info("Starting iptables_exporter", "version", version.Info())
-	logger.Info("Build context", "build_context", version.BuildContext())
+	logger := promslog.New(promslogConfig)
+	slog.SetDefault(logger)
+
+	slog.Info("Starting iptables_exporter", slog.String("version", version.Info()))
+	slog.Info("Build information", slog.String("build_context", version.BuildContext()))
 
 	c := collector{}
 	prometheus.MustRegister(&c)
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html>
+		data := pageData{
+			MetricsPath: *metricsPath,
+		}
+
+		tmpl := `
+		<html>
 			<head><title>iptables exporter</title></head>
 			<body>
-			<h1>iptables exporter</h1>
-			<p><a href="` + *metricsPath + `">Metrics</a></p>
+				<h1>iptables exporter</h1>
+				<p><a href="{{ .MetricsPath }}">Metrics</a></p>
 			</body>
-			</html>`))
+		</html>`
+
+		t, err := template.New("homePage").Parse(tmpl)
+		if err != nil {
+			http.Error(w, "Error parsing template", http.StatusInternalServerError)
+			return
+		}
+
+		if err := t.Execute(w, data); err != nil {
+			http.Error(w, "Error rendering template", http.StatusInternalServerError)
+		}
 	})
 
-	logger.Info("Listening on", "listen_address", *listenAddress)
+	slog.Info("Listening on", slog.String("listen_address", *listenAddress))
 	err := http.ListenAndServe(*listenAddress, nil)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Error(err.Error())
+		slog.Error("failed during server shutdown", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
 }
