@@ -71,8 +71,8 @@ unused: $(GOVENDOR)
 
 build: promu
 	@echo ">> building binaries"
-	@GOOS=linux GOARCH=amd64 $(PROMU) build --prefix $(PREFIX)/bin/amd64/
-	@GOOS=linux GOARCH=arm64 $(PROMU) build --prefix $(PREFIX)/bin/arm64/
+	@GOOS=linux GOARCH=amd64 $(PROMU) build --verbose --prefix $(PREFIX)/bin/amd64/
+	@GOOS=linux GOARCH=arm64 $(PROMU) build --verbose --prefix $(PREFIX)/bin/arm64/
 
 tarball: promu
 	@echo ">> building release tarball"
