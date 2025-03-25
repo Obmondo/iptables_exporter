@@ -15,6 +15,7 @@
 package iptables
 
 import (
+	"errors"
 	"log/slog"
 	"os/exec"
 )
@@ -51,5 +52,15 @@ func GetTables() (Tables, error) {
 		return nil, err
 	}
 
-	return r.Tables, r.error
+	if r.error != nil {
+		slog.Error("failed to parse iptables-save output", slog.String("err", r.error.Error()))
+		return nil, r.error
+	}
+
+	if len(r.Tables) == 0 {
+		slog.Error("no tables found in iptables-save output")
+		return nil, errors.New("no tables found in iptables-save output")
+	}
+
+	return r.Tables, nil
 }

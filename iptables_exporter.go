@@ -97,11 +97,6 @@ func (c *collector) Collect(metricChan chan<- prometheus.Metric) {
 	tables, err := iptables.GetTables()
 	duration := time.Since(start)
 
-	if len(tables) == 0 {
-		errNoIptables := errors.New("no output from iptables-save; no iptables rules found")
-		err = errors.Join(err, errNoIptables)
-	}
-
 	metricChan <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, duration.Seconds())
 	if err != nil {
 		metricChan <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, 0)
